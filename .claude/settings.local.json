@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip:*)",
+      "Bash(pip show:*)",
+      "Bash(sandbox --help:*)",
+      "Bash(python:*)",
+      "Bash(sandbox start:*)",
+      "Bash(sandbox task --help:*)",
+      "Bash(sandbox agent --help:*)",
+      "Bash(sandbox task submit --help:*)"
+    ]
+  }
+}

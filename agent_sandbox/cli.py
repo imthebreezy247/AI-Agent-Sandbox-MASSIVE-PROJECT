@@ -272,5 +272,42 @@ def task_list():
     console.print(table)
 
 
+@task.command("interpret")
+@click.argument("instruction")
+@click.option("--priority", default=1, type=int, help="Priority (0-3)")
+def task_interpret(instruction: str, priority: int):
+    """Submit a natural language instruction (uses LLM to decompose into tasks)."""
+    console.print(f"  Interpreting: [dim]{instruction[:80]}{'...' if len(instruction) > 80 else ''}[/dim]")
+
+    try:
+        resp = httpx.post(
+            f"{_api_url()}/api/tasks/interpret",
+            json={"instruction": instruction, "priority": priority},
+            timeout=60.0,  # LLM calls can take a while
+        )
+        if resp.status_code == 503:
+            console.print("[red]Error:[/red] LLM not configured. Set ANTHROPIC_API_KEY.")
+            sys.exit(1)
+        if resp.status_code != 200:
+            console.print(f"[red]Error:[/red] {resp.json().get('detail', 'Unknown error')}")
+            sys.exit(1)
+
+        data = resp.json()
+    except httpx.ConnectError:
+        console.print("[red]Error:[/red] Cannot connect. Is the sandbox running?")
+        sys.exit(1)
+    except httpx.ReadTimeout:
+        console.print("[red]Error:[/red] Request timed out (LLM may be slow).")
+        sys.exit(1)
+
+    console.print(f"\n  [green]Created {data['tasks_created']} task(s):[/green]")
+
+    for t in data.get("tasks", []):
+        desc = t.get("metadata", {}).get("description", t["type"])
+        console.print(f"    [cyan]{t['task_id']}[/cyan] ({t['type']}) — {desc}")
+
+    console.print("\n  Use [bold]sandbox task list[/bold] to monitor progress.")
+
+
 if __name__ == "__main__":
     main()

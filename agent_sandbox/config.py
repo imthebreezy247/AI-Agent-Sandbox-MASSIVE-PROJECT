@@ -18,6 +18,10 @@ class SandboxConfig:
     sandbox_mode: str = "subprocess"  # "subprocess" or "docker"
     log_level: str = "INFO"
     base_dir: Path = field(default_factory=lambda: Path.cwd())
+    # LLM settings
+    llm_provider: str = "anthropic"
+    llm_model: str = "claude-sonnet-4-20250514"
+    llm_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> SandboxConfig:
@@ -41,6 +45,9 @@ class SandboxConfig:
             api_port=int(os.getenv("API_PORT", "8000")),
             sandbox_mode=os.getenv("SANDBOX_MODE", "subprocess"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
+            llm_provider=os.getenv("LLM_PROVIDER", "anthropic"),
+            llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-20250514"),
+            llm_api_key=os.getenv("ANTHROPIC_API_KEY"),
         )
 
 

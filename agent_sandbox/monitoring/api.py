@@ -9,6 +9,7 @@ Provides:
 - POST /api/agents/{id}/resume — resume agent
 - GET /api/tasks — list all tasks
 - POST /api/tasks — submit a task
+- POST /api/tasks/interpret — submit natural language instruction (LLM)
 - DELETE /api/tasks/{id} — cancel a task
 - GET /api/messages — recent message history
 - GET /dashboard — monitoring dashboard UI
@@ -51,6 +52,11 @@ class SubmitTaskRequest(BaseModel):
 
 class BatchTaskRequest(BaseModel):
     tasks: list[SubmitTaskRequest]
+
+
+class InterpretTaskRequest(BaseModel):
+    instruction: str
+    priority: int = 1
 
 
 # --------------- API Factory ---------------
@@ -141,6 +147,41 @@ def create_api(orchestrator: Orchestrator) -> FastAPI:
         ]
         tasks = await orchestrator.submit_batch(tasks_data)
         return [t.to_dict() for t in tasks]
+
+    @app.post("/api/tasks/interpret")
+    async def interpret_task(req: InterpretTaskRequest):
+        """Submit a natural language instruction to be interpreted by LLM."""
+        from agent_sandbox.config import get_config
+        from agent_sandbox.llm.interpreter import LLMInterpreter, LLMInterpreterError
+
+        config = get_config()
+        if not config.llm_api_key:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM not configured. Set ANTHROPIC_API_KEY environment variable.",
+            )
+
+        try:
+            interpreter = LLMInterpreter()
+            tasks = await interpreter.interpret(
+                instruction=req.instruction,
+                priority=TaskPriority(req.priority),
+            )
+        except LLMInterpreterError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        # Submit all tasks to the orchestrator
+        submitted = []
+        for task in tasks:
+            orchestrator.queue.submit(task)
+            submitted.append(task)
+            logger.info(f"Submitted interpreted task {task.task_id}: {task.type}")
+
+        return {
+            "instruction": req.instruction,
+            "tasks_created": len(submitted),
+            "tasks": [t.to_dict() for t in submitted],
+        }
 
     @app.get("/api/tasks/{task_id}")
     async def get_task(task_id: str):
