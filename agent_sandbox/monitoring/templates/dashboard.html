@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Sandbox — Monitoring Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a26;
+    --border: #2a2a3a;
+    --text: #e4e4ef;
+    --text-dim: #8888a0;
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,0.15);
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --orange: #f97316;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .header .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 16px;
+    padding: 20px 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+
+  .stat-card .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 0 24px 24px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  .panel-header h2 { font-size: 13px; font-weight: 600; }
+
+  .panel-body { padding: 0; max-height: 400px; overflow-y: auto; }
+
+  .agent-row, .task-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    transition: background 0.15s;
+  }
+
+  .agent-row:hover, .task-row:hover { background: var(--surface-2); }
+
+  .agent-row:last-child, .task-row:last-child { border-bottom: none; }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .badge.idle { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.busy { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge.paused { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge.stopped { background: rgba(136,136,160,0.15); color: var(--text-dim); }
+  .badge.failed { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge.pending { background: rgba(136,136,160,0.15); color: var(--text-dim); }
+  .badge.queued { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge.running { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge.completed { background: rgba(34,197,94,0.15); color: var(--green); }
+
+  .agent-name { flex: 1; font-weight: 500; }
+  .agent-id { color: var(--text-dim); font-size: 11px; }
+  .agent-stats { color: var(--text-dim); font-size: 11px; }
+
+  .task-type { font-weight: 500; min-width: 70px; }
+  .task-id { color: var(--text-dim); font-size: 11px; flex: 1; }
+
+  .btn {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.danger:hover { background: var(--red); border-color: var(--red); }
+  .btn.small { padding: 2px 8px; font-size: 10px; }
+
+  .actions { display: flex; gap: 4px; }
+
+  .controls {
+    padding: 0 24px 16px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .controls input {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    width: 200px;
+  }
+
+  .controls input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+  .log-panel { grid-column: 1 / -1; }
+
+  .log-line {
+    padding: 4px 16px;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+    display: flex;
+    gap: 12px;
+  }
+
+  .log-time { color: var(--text-dim); min-width: 80px; }
+  .log-type { min-width: 100px; }
+  .log-msg { flex: 1; word-break: break-all; }
+
+  .empty-state {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+
+  .connected { color: var(--green); }
+  .disconnected { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Agent Sandbox</h1>
+  <div class="status-badge">
+    <span class="dot green" id="ws-dot"></span>
+    <span id="ws-status" class="connected">Connected</span>
+    <span style="color:var(--text-dim); margin-left: 12px;" id="uptime"></span>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="label">Active Agents</div>
+    <div class="value" id="stat-agents" style="color:var(--accent)">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Tasks Completed</div>
+    <div class="value" id="stat-completed" style="color:var(--green)">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Tasks Pending</div>
+    <div class="value" id="stat-pending" style="color:var(--yellow)">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Messages</div>
+    <div class="value" id="stat-messages" style="color:var(--blue)">0</div>
+  </div>
+</div>
+
+<!-- Spawn controls -->
+<div class="controls">
+  <input type="text" id="agent-name" placeholder="Agent name..." value="worker">
+  <input type="number" id="agent-count" placeholder="Count" value="1" min="1" max="50" style="width:80px">
+  <button class="btn" onclick="spawnAgent()">Spawn Agent</button>
+  <div style="flex:1"></div>
+  <input type="text" id="task-cmd" placeholder="Shell command..." style="width:300px">
+  <button class="btn" onclick="submitTask()">Submit Task</button>
+</div>
+
+<!-- Main panels -->
+<div class="main-grid">
+  <!-- Agents -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Agents (Sandboxes)</h2>
+      <span id="agent-count-label" style="color:var(--text-dim)">0 agents</span>
+    </div>
+    <div class="panel-body" id="agents-list">
+      <div class="empty-state">No agents running. Spawn one above.</div>
+    </div>
+  </div>
+
+  <!-- Tasks -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Tasks</h2>
+      <span id="task-count-label" style="color:var(--text-dim)">0 tasks</span>
+    </div>
+    <div class="panel-body" id="tasks-list">
+      <div class="empty-state">No tasks submitted yet.</div>
+    </div>
+  </div>
+
+  <!-- Event log -->
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <h2>Event Log</h2>
+      <button class="btn small" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="panel-body" id="log-list" style="max-height: 250px;">
+      <div class="empty-state">Waiting for events...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = window.location.origin;
+  const WS_URL = `ws://${window.location.host}/ws`;
+  let ws = null;
+  let logEntries = [];
+
+  function connectWS() {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      document.getElementById('ws-dot').className = 'dot green';
+      document.getElementById('ws-status').textContent = 'Connected';
+      document.getElementById('ws-status').className = 'connected';
+      addLog('system', 'WebSocket connected');
+    };
+
+    ws.onclose = () => {
+      document.getElementById('ws-dot').className = 'dot red';
+      document.getElementById('ws-status').textContent = 'Disconnected';
+      document.getElementById('ws-status').className = 'disconnected';
+      addLog('system', 'WebSocket disconnected — retrying...');
+      setTimeout(connectWS, 3000);
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        handleWSMessage(msg);
+      } catch(e) {}
+    };
+  }
+
+  function handleWSMessage(msg) {
+    if (msg.type === 'snapshot' || msg.type === 'status') {
+      updateStatus(msg.data);
+      if (msg.agents) updateAgentsList(msg.agents);
+      if (msg.tasks) updateTasksList(msg.tasks);
+    } else if (msg.type === 'event') {
+      addLog('event', `${msg.event}: ${JSON.stringify(msg.data).substring(0, 120)}`);
+      refreshData();
+    } else if (msg.type === 'message') {
+      addLog('msg', `[${msg.data.type}] ${msg.data.sender} -> ${msg.data.recipient}`);
+    }
+  }
+
+  function updateStatus(data) {
+    if (!data) return;
+    const agents = data.agents || {};
+    const tasks = data.tasks || {};
+    const bus = data.message_bus || {};
+
+    document.getElementById('stat-agents').textContent = agents.active || 0;
+    document.getElementById('stat-completed').textContent = (tasks.by_status || {}).completed || 0;
+    document.getElementById('stat-pending').textContent = tasks.pending || 0;
+    document.getElementById('stat-messages').textContent = bus.total_messages || 0;
+
+    if (data.uptime_seconds) {
+      const m = Math.floor(data.uptime_seconds / 60);
+      const s = Math.floor(data.uptime_seconds % 60);
+      document.getElementById('uptime').textContent = `Uptime: ${m}m ${s}s`;
+    }
+  }
+
+  function updateAgentsList(agents) {
+    const el = document.getElementById('agents-list');
+    document.getElementById('agent-count-label').textContent = `${agents.length} agent${agents.length !== 1 ? 's' : ''}`;
+
+    if (!agents.length) {
+      el.innerHTML = '<div class="empty-state">No agents running. Spawn one above.</div>';
+      return;
+    }
+
+    el.innerHTML = agents.map(a => `
+      <div class="agent-row">
+        <span class="badge ${a.state}">${a.state}</span>
+        <span class="agent-name">${a.name}</span>
+        <span class="agent-id">${a.agent_id}</span>
+        <span class="agent-stats">${a.tasks_completed} done / ${a.tasks_failed} failed</span>
+        <div class="actions">
+          ${a.state === 'idle' || a.state === 'busy' ?
+            `<button class="btn small" onclick="pauseAgent('${a.agent_id}')">Pause</button>` :
+            a.state === 'paused' ?
+            `<button class="btn small" onclick="resumeAgent('${a.agent_id}')">Resume</button>` : ''}
+          <button class="btn small danger" onclick="killAgent('${a.agent_id}')">Kill</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function updateTasksList(tasks) {
+    const el = document.getElementById('tasks-list');
+    document.getElementById('task-count-label').textContent = `${tasks.length} task${tasks.length !== 1 ? 's' : ''}`;
+
+    if (!tasks.length) {
+      el.innerHTML = '<div class="empty-state">No tasks submitted yet.</div>';
+      return;
+    }
+
+    el.innerHTML = tasks.slice(0, 50).map(t => `
+      <div class="task-row">
+        <span class="badge ${t.status}">${t.status}</span>
+        <span class="task-type">${t.type}</span>
+        <span class="task-id">${t.task_id}</span>
+        ${t.assigned_to ? `<span class="agent-id">${t.assigned_to}</span>` : ''}
+        ${t.status === 'queued' || t.status === 'pending' ?
+          `<button class="btn small danger" onclick="cancelTask('${t.task_id}')">Cancel</button>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function addLog(type, message) {
+    const now = new Date().toLocaleTimeString();
+    logEntries.push({time: now, type, message});
+    if (logEntries.length > 200) logEntries = logEntries.slice(-100);
+
+    const el = document.getElementById('log-list');
+    const typeColors = {system: 'var(--accent)', event: 'var(--green)', msg: 'var(--blue)', error: 'var(--red)'};
+
+    el.innerHTML = logEntries.slice().reverse().map(e => `
+      <div class="log-line">
+        <span class="log-time">${e.time}</span>
+        <span class="log-type" style="color:${typeColors[e.type] || 'var(--text-dim)'}">${e.type}</span>
+        <span class="log-msg">${e.message}</span>
+      </div>
+    `).join('');
+  }
+
+  function clearLog() {
+    logEntries = [];
+    document.getElementById('log-list').innerHTML = '<div class="empty-state">Log cleared.</div>';
+  }
+
+  async function refreshData() {
+    try {
+      const [agents, tasks] = await Promise.all([
+        fetch(`${API}/api/agents`).then(r => r.json()),
+        fetch(`${API}/api/tasks`).then(r => r.json()),
+      ]);
+      updateAgentsList(agents);
+      updateTasksList(tasks);
+    } catch(e) {}
+  }
+
+  async function spawnAgent() {
+    const name = document.getElementById('agent-name').value || 'worker';
+    const count = parseInt(document.getElementById('agent-count').value) || 1;
+    try {
+      await fetch(`${API}/api/agents`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, count}),
+      });
+      addLog('system', `Spawning ${count} agent(s): ${name}`);
+    } catch(e) { addLog('error', `Spawn failed: ${e}`); }
+  }
+
+  async function killAgent(id) {
+    await fetch(`${API}/api/agents/${id}`, {method: 'DELETE'});
+    addLog('system', `Killed agent ${id}`);
+    refreshData();
+  }
+
+  async function pauseAgent(id) {
+    await fetch(`${API}/api/agents/${id}/pause`, {method: 'POST'});
+    refreshData();
+  }
+
+  async function resumeAgent(id) {
+    await fetch(`${API}/api/agents/${id}/resume`, {method: 'POST'});
+    refreshData();
+  }
+
+  async function submitTask() {
+    const cmd = document.getElementById('task-cmd').value;
+    if (!cmd) return;
+    try {
+      await fetch(`${API}/api/tasks`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({type: 'shell', payload: {command: cmd}}),
+      });
+      document.getElementById('task-cmd').value = '';
+      addLog('system', `Submitted task: ${cmd}`);
+    } catch(e) { addLog('error', `Submit failed: ${e}`); }
+  }
+
+  async function cancelTask(id) {
+    await fetch(`${API}/api/tasks/${id}`, {method: 'DELETE'});
+    addLog('system', `Cancelled task ${id}`);
+    refreshData();
+  }
+
+  // Enter key on task input
+  document.getElementById('task-cmd').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitTask();
+  });
+
+  // Bootstrap
+  connectWS();
+  refreshData();
+  setInterval(refreshData, 10000);
+</script>
+</body>
+</html>
