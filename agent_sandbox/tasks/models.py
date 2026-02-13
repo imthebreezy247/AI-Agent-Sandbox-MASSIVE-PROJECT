@@ -53,6 +53,7 @@ class Task:
             "task_id": self.task_id,
             "type": self.type,
             "payload": self.payload,
+            "metadata": self.metadata,
         }
         if self.timeout:
             d["payload"]["timeout"] = self.timeout

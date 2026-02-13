@@ -26,6 +26,9 @@ env/
 .env.local
 .env.*.local
 
+# Claude settings (may contain secrets)
+.claude/settings.local.json
+
 # Logs
 logs/
 *.log

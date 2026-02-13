@@ -22,6 +22,9 @@ class SandboxConfig:
     llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-20250514"
     llm_api_key: str | None = None
+    # Repository settings
+    repos_dir: Path = field(default_factory=lambda: Path.home() / ".agent-sandbox" / "repos")
+    github_token: str | None = None
 
     @classmethod
     def from_env(cls) -> SandboxConfig:
@@ -48,6 +51,8 @@ class SandboxConfig:
             llm_provider=os.getenv("LLM_PROVIDER", "anthropic"),
             llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-20250514"),
             llm_api_key=os.getenv("ANTHROPIC_API_KEY"),
+            repos_dir=Path(os.getenv("REPOS_DIR", str(Path.home() / ".agent-sandbox" / "repos"))),
+            github_token=os.getenv("GITHUB_TOKEN"),
         )
 
 

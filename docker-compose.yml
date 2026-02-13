@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MAX_AGENTS=20
+      - MAX_AGENTS=8
       - SANDBOX_TIMEOUT=300
       - LOG_LEVEL=INFO
     volumes:

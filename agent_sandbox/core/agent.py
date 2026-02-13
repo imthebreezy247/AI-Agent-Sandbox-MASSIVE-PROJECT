@@ -85,6 +85,9 @@ class WorkerAgent:
         # Custom task handlers keyed by task type
         self._handlers: dict[str, TaskHandler] = {}
 
+        # Current working directory for repo context
+        self._current_working_dir: str | None = None
+
         # Event callbacks
         self._on_task_complete: Callable | None = None
         self._on_task_failed: Callable | None = None
@@ -126,6 +129,10 @@ class WorkerAgent:
         task_id = task.get("task_id", "unknown")
         task_type = task.get("type", "shell")
         payload = task.get("payload", {})
+
+        # Get working directory from task metadata (for repo context)
+        metadata = task.get("metadata", {})
+        self._current_working_dir = metadata.get("working_dir")
 
         self.current_task_id = task_id
         self._set_state(AgentState.BUSY)
@@ -194,6 +201,7 @@ class WorkerAgent:
         result = await self.sandbox.execute(
             command,
             timeout=payload.get("timeout"),
+            cwd=self._current_working_dir,
         )
         return self._execution_to_dict(result)
 
@@ -210,23 +218,39 @@ class WorkerAgent:
         return self._execution_to_dict(result)
 
     async def _handle_write_file(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Write a file into the sandbox."""
+        """Write a file into the sandbox or repo."""
+        from pathlib import Path
+
         path = payload.get("path", "")
         content = payload.get("content", "")
         if not path:
             return {"status": "error", "error": "No path provided"}
 
-        written = await self.sandbox.write_file(path, content)
-        return {"status": "success", "path": str(written)}
+        # If we have a repo working dir, write relative to that
+        if self._current_working_dir:
+            full_path = Path(self._current_working_dir) / path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(content)
+            return {"status": "success", "path": str(full_path)}
+        else:
+            written = await self.sandbox.write_file(path, content)
+            return {"status": "success", "path": str(written)}
 
     async def _handle_read_file(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Read a file from the sandbox."""
+        """Read a file from the sandbox or repo."""
+        from pathlib import Path
+
         path = payload.get("path", "")
         if not path:
             return {"status": "error", "error": "No path provided"}
 
         try:
-            content = await self.sandbox.read_file(path)
+            # If we have a repo working dir, read relative to that
+            if self._current_working_dir:
+                full_path = Path(self._current_working_dir) / path
+                content = full_path.read_text()
+            else:
+                content = await self.sandbox.read_file(path)
             return {"status": "success", "content": content}
         except FileNotFoundError:
             return {"status": "error", "error": f"File not found: {path}"}

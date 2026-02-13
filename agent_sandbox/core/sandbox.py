@@ -98,6 +98,7 @@ class Sandbox:
         command: str,
         timeout: int | None = None,
         stdin_data: str | None = None,
+        cwd: str | Path | None = None,
     ) -> ExecutionResult:
         """Execute a shell command inside this sandbox.
 
@@ -105,6 +106,7 @@ class Sandbox:
             command: Shell command to run.
             timeout: Override default timeout (seconds).
             stdin_data: Optional data to pipe to stdin.
+            cwd: Working directory override (defaults to sandbox workspace).
 
         Returns:
             ExecutionResult with stdout, stderr, exit code, and timing.
@@ -114,6 +116,9 @@ class Sandbox:
 
         effective_timeout = timeout or self.timeout
         self.state = SandboxState.RUNNING
+
+        # Use specified cwd or default to workspace
+        working_dir = str(cwd) if cwd else str(self.workspace)
 
         # Build restricted environment
         env = {
@@ -132,7 +137,7 @@ class Sandbox:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.PIPE if stdin_data else None,
-                cwd=str(self.workspace),
+                cwd=working_dir,
                 env=env,
             )
 

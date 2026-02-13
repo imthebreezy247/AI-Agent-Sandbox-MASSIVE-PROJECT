@@ -212,6 +212,35 @@
 
   .connected { color: var(--green); }
   .disconnected { color: var(--red); }
+
+  .repo-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .repo-row:hover { background: var(--surface-2); }
+  .repo-row:last-child { border-bottom: none; }
+  .repo-name { font-weight: 500; flex: 1; }
+  .repo-branch { color: var(--text-dim); font-size: 11px; }
+  .repo-status { font-size: 11px; }
+  .repo-status.clean { color: var(--green); }
+  .repo-status.dirty { color: var(--orange); }
+
+  .controls select {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
+  .controls select:focus { border-color: var(--accent); }
+
+  .three-col { grid-template-columns: 1fr 1fr 1fr; }
 </style>
 </head>
 <body>
@@ -251,12 +280,41 @@
   <input type="number" id="agent-count" placeholder="Count" value="1" min="1" max="50" style="width:80px">
   <button class="btn" onclick="spawnAgent()">Spawn Agent</button>
   <div style="flex:1"></div>
-  <input type="text" id="task-cmd" placeholder="Shell command..." style="width:300px">
-  <button class="btn" onclick="submitTask()">Submit Task</button>
+  <input type="text" id="task-cmd" placeholder="Shell command..." style="width:200px">
+  <button class="btn" onclick="submitTask()">Submit</button>
+</div>
+
+<!-- AI Task Input -->
+<div class="controls" style="padding-top:0;">
+  <select id="repo-select" style="width:150px;">
+    <option value="">No repo (sandbox)</option>
+  </select>
+  <div style="display:flex; align-items:center; gap:8px; flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:4px 8px;">
+    <span style="color:var(--accent); font-size:11px; font-weight:600;">AI</span>
+    <input type="text" id="ai-instruction" placeholder="Describe what you want to do in natural language..." style="flex:1; border:none; background:transparent; width:auto;">
+  </div>
+  <button class="btn" onclick="interpretTask()" style="background:var(--accent); border-color:var(--accent); color:white;">Interpret & Run</button>
+</div>
+
+<!-- Repo controls -->
+<div class="controls" style="padding-top:0;">
+  <input type="text" id="repo-url" placeholder="GitHub repo URL..." style="flex:1;">
+  <button class="btn" onclick="cloneRepo()">Clone Repo</button>
 </div>
 
 <!-- Main panels -->
-<div class="main-grid">
+<div class="main-grid three-col">
+  <!-- Repos -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Repositories</h2>
+      <span id="repo-count-label" style="color:var(--text-dim)">0 repos</span>
+    </div>
+    <div class="panel-body" id="repos-list">
+      <div class="empty-state">No repos cloned. Add one above.</div>
+    </div>
+  </div>
+
   <!-- Agents -->
   <div class="panel">
     <div class="panel-header">
@@ -425,13 +483,112 @@
 
   async function refreshData() {
     try {
-      const [agents, tasks] = await Promise.all([
+      const [agents, tasks, repos] = await Promise.all([
         fetch(`${API}/api/agents`).then(r => r.json()),
         fetch(`${API}/api/tasks`).then(r => r.json()),
+        fetch(`${API}/api/repos`).then(r => r.json()).catch(() => []),
       ]);
       updateAgentsList(agents);
       updateTasksList(tasks);
+      updateReposList(repos);
     } catch(e) {}
+  }
+
+  function updateReposList(repos) {
+    const el = document.getElementById('repos-list');
+    const select = document.getElementById('repo-select');
+    document.getElementById('repo-count-label').textContent = `${repos.length} repo${repos.length !== 1 ? 's' : ''}`;
+
+    // Update dropdown
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">No repo (sandbox)</option>' +
+      repos.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
+    select.value = currentVal;
+
+    if (!repos.length) {
+      el.innerHTML = '<div class="empty-state">No repos cloned. Add one above.</div>';
+      return;
+    }
+
+    el.innerHTML = repos.map(r => `
+      <div class="repo-row">
+        <span class="repo-name">${r.name}</span>
+        <span class="repo-branch">${r.branch}</span>
+        <span class="repo-status ${r.has_changes ? 'dirty' : 'clean'}">
+          ${r.has_changes ? '● changes' : '✓ clean'}
+        </span>
+        <div class="actions">
+          ${r.has_changes ? `<button class="btn small" onclick="pushRepo('${r.name}')">Push</button>` : ''}
+          <button class="btn small danger" onclick="deleteRepo('${r.name}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function cloneRepo() {
+    const url = document.getElementById('repo-url').value;
+    if (!url) return;
+
+    addLog('system', `Cloning repo: ${url}`);
+
+    try {
+      const resp = await fetch(`${API}/api/repos`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url}),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        addLog('error', `Clone failed: ${err.detail}`);
+        return;
+      }
+
+      const repo = await resp.json();
+      document.getElementById('repo-url').value = '';
+      addLog('system', `Cloned ${repo.name} (${repo.files_count} files)`);
+      refreshData();
+    } catch(e) {
+      addLog('error', `Clone failed: ${e}`);
+    }
+  }
+
+  async function deleteRepo(name) {
+    if (!confirm(`Delete repo "${name}"? This cannot be undone.`)) return;
+
+    await fetch(`${API}/api/repos/${name}`, {method: 'DELETE'});
+    addLog('system', `Deleted repo ${name}`);
+    refreshData();
+  }
+
+  async function pushRepo(name) {
+    const message = prompt('Commit message:', 'Changes from AI Agent');
+    if (!message) return;
+
+    addLog('system', `Requesting push for ${name}...`);
+
+    try {
+      // Create push request
+      await fetch(`${API}/api/repos/${name}/push`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({commit_message: message}),
+      });
+
+      // Auto-approve for now (could add confirmation dialog)
+      const resp = await fetch(`${API}/api/repos/${name}/push/approve`, {method: 'POST'});
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        addLog('error', `Push failed: ${err.detail}`);
+        return;
+      }
+
+      addLog('system', `Pushed changes for ${name}`);
+      refreshData();
+    } catch(e) {
+      addLog('error', `Push failed: ${e}`);
+    }
   }
 
   async function spawnAgent() {
@@ -483,9 +640,62 @@
     refreshData();
   }
 
+  async function interpretTask() {
+    const instruction = document.getElementById('ai-instruction').value;
+    if (!instruction) return;
+
+    const repo = document.getElementById('repo-select').value || null;
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Thinking...';
+
+    const repoInfo = repo ? ` [repo: ${repo}]` : '';
+    addLog('system', `AI interpreting${repoInfo}: ${instruction.substring(0, 80)}...`);
+
+    try {
+      const resp = await fetch(`${API}/api/tasks/interpret`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({instruction, priority: 1, repo}),
+      });
+
+      if (resp.status === 503) {
+        addLog('error', 'LLM not configured. Set ANTHROPIC_API_KEY on server.');
+        return;
+      }
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        addLog('error', `Interpret failed: ${err.detail || 'Unknown error'}`);
+        return;
+      }
+
+      const data = await resp.json();
+      document.getElementById('ai-instruction').value = '';
+      addLog('system', `AI created ${data.tasks_created} task(s)`);
+
+      for (const t of data.tasks || []) {
+        const desc = t.metadata?.description || t.type;
+        addLog('system', `  → ${t.task_id} (${t.type}): ${desc}`);
+      }
+
+      refreshData();
+    } catch(e) {
+      addLog('error', `Interpret failed: ${e}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Interpret & Run';
+    }
+  }
+
   // Enter key on task input
   document.getElementById('task-cmd').addEventListener('keydown', e => {
     if (e.key === 'Enter') submitTask();
+  });
+
+  // Enter key on AI instruction input
+  document.getElementById('ai-instruction').addEventListener('keydown', e => {
+    if (e.key === 'Enter') interpretTask();
   });
 
   // Bootstrap
