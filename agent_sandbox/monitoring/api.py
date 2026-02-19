@@ -376,6 +376,6 @@ def create_api(orchestrator: Orchestrator) -> FastAPI:
         template_path = TEMPLATES_DIR / "dashboard.html"
         if not template_path.exists():
             raise HTTPException(status_code=500, detail="Dashboard template not found")
-        return HTMLResponse(content=template_path.read_text())
+        return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
 
     return app
