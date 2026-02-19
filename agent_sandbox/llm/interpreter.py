@@ -67,7 +67,7 @@ class LLMInterpreter:
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=TASK_DECOMPOSITION_SYSTEM,
                 messages=[{"role": "user", "content": user_message}],
             )
@@ -76,6 +76,10 @@ class LLMInterpreter:
 
         # Extract text content
         content = response.content[0].text if response.content else ""
+
+        # Check if response was truncated
+        if response.stop_reason == "max_tokens":
+            logger.warning("LLM response was truncated due to max_tokens limit")
 
         # Parse JSON response
         try:
@@ -87,8 +91,20 @@ class LLMInterpreter:
 
             result = json.loads(content.strip())
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response: {content}")
-            raise LLMInterpreterError(f"Invalid JSON response from LLM: {e}") from e
+            # Try to recover by finding valid JSON
+            logger.warning(f"Initial JSON parse failed, attempting recovery: {e}")
+            try:
+                # Try to find a complete JSON object
+                import re
+                json_match = re.search(r'\{[\s\S]*"tasks"\s*:\s*\[[\s\S]*?\]\s*\}', content)
+                if json_match:
+                    result = json.loads(json_match.group())
+                else:
+                    logger.error(f"Failed to parse LLM response: {content[:500]}...")
+                    raise LLMInterpreterError(f"Invalid JSON response from LLM: {e}") from e
+            except (json.JSONDecodeError, AttributeError) as e2:
+                logger.error(f"Failed to recover JSON: {content[:500]}...")
+                raise LLMInterpreterError(f"Invalid JSON response from LLM: {e}") from e
 
         # Validate response structure
         if "tasks" not in result:
