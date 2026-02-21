@@ -9,7 +9,9 @@
       "Bash(git:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(timeout /t 3)",
+      "Bash(ping:*)"
     ]
   }
 }
