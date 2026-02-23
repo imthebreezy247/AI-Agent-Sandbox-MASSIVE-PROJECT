@@ -11,7 +11,10 @@
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
       "Bash(timeout /t 3)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(xargs cat:*)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(wc:*)"
     ]
   }
 }
