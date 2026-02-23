@@ -120,13 +120,23 @@ class Sandbox:
         # Use specified cwd or default to workspace
         working_dir = str(cwd) if cwd else str(self.workspace)
 
-        # Build restricted environment
+        # Build restricted environment — include platform-essential variables
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": str(self.workspace),
             "SANDBOX_ID": self.id,
-            **self._env,
         }
+
+        # On Windows, cmd.exe needs these to function at all
+        if os.name == "nt":
+            for key in ("SYSTEMROOT", "COMSPEC", "TEMP", "TMP",
+                        "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+                        "SYSTEMDRIVE", "WINDIR"):
+                val = os.environ.get(key)
+                if val:
+                    env[key] = val
+
+        env.update(self._env)
 
         start = time.monotonic()
         timed_out = False

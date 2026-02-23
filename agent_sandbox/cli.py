@@ -42,8 +42,9 @@ def main():
 @click.option("--host", default="0.0.0.0", help="API host")
 @click.option("--port", default=8000, type=int, help="API port")
 @click.option("--max-agents", default=10, type=int, help="Max concurrent agents")
+@click.option("--workers", default=1, type=int, help="Default worker agents to spawn on startup (0 to disable)")
 @click.option("--log-level", default="INFO", help="Log level")
-def start(host: str, port: int, max_agents: int, log_level: str):
+def start(host: str, port: int, max_agents: int, workers: int, log_level: str):
     """Start the orchestrator and monitoring server."""
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
@@ -72,6 +73,12 @@ def start(host: str, port: int, max_agents: int, log_level: str):
     async def on_startup():
         await orchestrator.start()
         await ws_manager.start()
+
+        # Auto-spawn default worker agents so submitted tasks actually execute
+        if workers > 0:
+            await orchestrator.spawn_pool("worker", workers)
+            console.print(f"  Spawned [cyan]{workers}[/cyan] default worker agent(s)")
+
         console.print(f"\n  [bold cyan]Agent Sandbox[/bold cyan] running on "
                        f"[bold]http://{host}:{port}[/bold]")
         console.print(f"  Dashboard: [link]http://{host}:{port}/dashboard[/link]")
@@ -227,6 +234,17 @@ def task_submit(command: str, task_type: str, priority: int):
         })
         data = resp.json()
         console.print(f"  Submitted task [cyan]{data['task_id']}[/cyan] (type={task_type})")
+
+        # Warn if no agents are available to execute the task
+        try:
+            agents_resp = httpx.get(f"{_api_url()}/api/agents")
+            agents = agents_resp.json()
+            if not agents:
+                console.print("  [yellow]Warning:[/yellow] No agents are running. "
+                              "Task will stay queued until an agent is spawned.")
+                console.print("  Use [bold]sandbox agent spawn worker[/bold] to create one.")
+        except Exception:
+            pass
     except httpx.ConnectError:
         console.print("[red]Error:[/red] Cannot connect.")
         sys.exit(1)

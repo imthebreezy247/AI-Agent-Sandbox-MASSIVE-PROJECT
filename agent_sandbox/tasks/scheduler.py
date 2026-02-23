@@ -64,7 +64,12 @@ class TaskScheduler:
                 agent = self._find_agent(task)
                 if agent is None:
                     # No agent available — re-queue
-                    logger.debug("No idle agent for task %s, re-queuing", task.task_id)
+                    if not self.registry.get_all():
+                        logger.warning("No agents spawned — task %s stuck in queue. "
+                                       "Spawn agents with 'sandbox agent spawn worker'.",
+                                       task.task_id)
+                    else:
+                        logger.debug("No idle agent for task %s, re-queuing", task.task_id)
                     task.status = TaskStatus.QUEUED
                     task.assigned_at = None
                     self.queue.submit(task)
